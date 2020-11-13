@@ -18,7 +18,7 @@ import torch.optim as optim
 import torch.utils.data as data
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from tensorboardX import SummaryWriter
+# from tensorboardX import SummaryWriter
 import models as models
 
 from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
@@ -211,7 +211,7 @@ def main():
     global best_acc
     start_epoch = args.start_epoch  # start from epoch 0 or last checkpoint epoch
     if args.print_output == 0:
-        writer = SummaryWriter(args.writerdir) 
+        # writer = SummaryWriter(args.writerdir) 
         os.makedirs(args.save_dir, exist_ok=True)
 
     # Data
@@ -490,10 +490,10 @@ def main():
         test_loss, test_acc = test(testloader, model, criterion, epoch, use_cuda)
         
         # ========== write the scalar to tensorboard ============ 
-        writer.add_scalar('train_loss', train_loss,epoch)
-        writer.add_scalar('test_loss',test_loss,epoch)
-        writer.add_scalar('train_acc', train_acc,epoch)
-        writer.add_scalar('test_acc', test_acc,epoch)
+        # writer.add_scalar('train_loss', train_loss,epoch)
+        # writer.add_scalar('test_loss',test_loss,epoch)
+        # writer.add_scalar('train_acc', train_acc,epoch)
+        # writer.add_scalar('test_acc', test_acc,epoch)
         
         # append logger file
         logger.append([state['lr'], train_loss, test_loss, train_acc, test_acc])
@@ -565,18 +565,19 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
         end = time.time()
 
         # plot progress
-        bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-                    batch=batch_idx + 1,
-                    size=len(trainloader),
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    total=bar.elapsed_td,
-                    eta=bar.eta_td,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                    top5=top5.avg,
-                    )
-        bar.next()
+        if batch_idx % 100 ==0:
+            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+                        batch=batch_idx + 1,
+                        size=len(trainloader),
+                        data=data_time.avg,
+                        bt=batch_time.avg,
+                        total=bar.elapsed_td,
+                        eta=bar.eta_td,
+                        loss=losses.avg,
+                        top1=top1.avg,
+                        top5=top5.avg,
+                        )
+            bar.next()
     bar.finish()
     print("Train acc : {}".format(top1.avg))
     return (losses.avg, top1.avg)
