@@ -21,7 +21,7 @@ import torchvision.datasets as datasets
 # from tensorboardX import SummaryWriter
 import models as models
 
-from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig
+from utils import Bar, Logger, AverageMeter, accuracy, mkdir_p, savefig, get_sv, get_hook, run_once, detach_hook, get_heuristic_sv
 from utils.misc import get_zero_param
 from pruner.GraSP import GraSP
 from pruner.SNIP import SNIP
@@ -104,6 +104,9 @@ parser.add_argument('--cubic',type=int, default=0,help = 'Ablation: Using Cubic 
 
 # ========== Can use this BOOLEAN attribute to read in the model in and Run it on the Trainloader to see ACC ============
 parser.add_argument('--print_output',default = 0, type = int)
+
+parser.add_argument('--sv', dest='compute_sv', action='store_true',
+                    help='compute_sv throughout training')
 
 args = parser.parse_args()
 state = {k: v for k, v in args._get_kwargs()}
@@ -334,7 +337,19 @@ def main():
         print('==> Loading init model from %s'%args.model)
         checkpoint = torch.load(args.model, map_location='cpu')
         model.load_state_dict(checkpoint['state_dict'])
- 
+    
+    size_hook = None
+
+    if args.compute_sv:
+        training_sv = []
+        training_sv_avg = []
+        training_sv_std = []
+        h_sv = []
+        print('[*] Will compute singular values throught training.')
+        size_hook = get_hook(model, (nn.Linear, nn.Conv2d, nn.ConvTranspose2d))
+        run_once(trainloader, model)
+        detach_hook([size_hook])
+
     # ========== the following code is the implementation of Smart Ratio ============
     if args.smart_ratio != 0:
         print("################### DEBUG PRINT : USING SMART RATIO ###################")
@@ -489,6 +504,16 @@ def main():
         train_loss, train_acc = train(trainloader, model, criterion, optimizer, epoch, use_cuda)
         test_loss, test_acc = test(testloader, model, criterion, epoch, use_cuda)
         
+        if args.compute_sv and epoch % 10 == 0:
+            sv, sv_avg, sv_std = get_sv(model, size_hook)
+            training_sv.append(sv)
+            training_sv_avg.append(sv_avg)
+            training_sv_std.append(sv_std)
+            h_sv, _, _ = get_heuristic_sv(model)
+            np.save(os.path.join(args.save_dir, 'sv.npy'), training_sv)
+            np.save(os.path.join(args.save_dir, 'sv_avg.npy'), training_sv_avg)
+            np.save(os.path.join(args.save_dir, 'sv_std.npy'), training_sv_std)
+            np.save(os.path.join(args.save_dir, 'h_sv.npy'), h_sv)
         # ========== write the scalar to tensorboard ============ 
         # writer.add_scalar('train_loss', train_loss,epoch)
         # writer.add_scalar('test_loss',test_loss,epoch)
@@ -526,7 +551,7 @@ def train(trainloader, model, criterion, optimizer, epoch, use_cuda):
     top5 = AverageMeter()
     end = time.time()
 
-    bar = Bar('Processing', max=len(trainloader))
+    bar = Bar('Processing', max=len(trainloader)//100+1)
     print(args)
     for batch_idx, (inputs, targets) in enumerate(trainloader):
         # measure data loading time
@@ -595,7 +620,7 @@ def test(testloader, model, criterion, epoch, use_cuda):
     model.eval()
 
     end = time.time()
-    bar = Bar('Processing', max=len(testloader))
+    bar = Bar('Processing', max=len(testloader)//100+1)
     for batch_idx, (inputs, targets) in enumerate(testloader):
         # measure data loading time
         data_time.update(time.time() - end)
@@ -619,18 +644,19 @@ def test(testloader, model, criterion, epoch, use_cuda):
         end = time.time()
 
         # plot progress
-        bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
-                    batch=batch_idx + 1,
-                    size=len(testloader),
-                    data=data_time.avg,
-                    bt=batch_time.avg,
-                    total=bar.elapsed_td,
-                    eta=bar.eta_td,
-                    loss=losses.avg,
-                    top1=top1.avg,
-                    top5=top5.avg,
-                    )
-        bar.next()
+        if batch_idx % 100 ==0:
+            bar.suffix  = '({batch}/{size}) Data: {data:.3f}s | Batch: {bt:.3f}s | Total: {total:} | ETA: {eta:} | Loss: {loss:.4f} | top1: {top1: .4f} | top5: {top5: .4f}'.format(
+                        batch=batch_idx + 1,
+                        size=len(testloader),
+                        data=data_time.avg,
+                        bt=batch_time.avg,
+                        total=bar.elapsed_td,
+                        eta=bar.eta_td,
+                        loss=losses.avg,
+                        top1=top1.avg,
+                        top5=top5.avg,
+                        )
+            bar.next()
     bar.finish()
     print("Test acc : {}".format(top1.avg))
     return (losses.avg, top1.avg)

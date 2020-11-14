@@ -1,5 +1,6 @@
 python train_ticket.py --dataset cifar10 --arch resnet --depth 32 \
     --lr 0.1 \
     --SNIP 1 \
-    --save_dir . \
+    --save_dir result \
     --writerdir .
+    --sv
